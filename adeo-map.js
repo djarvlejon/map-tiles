@@ -10,8 +10,9 @@
 // Map data © OpenStreetMap contributors (ODbL), via Protomaps. Keep the attribution visible.
 
 const REPO = 'https://cdn.jsdelivr.net/gh/djarvlejon/map-tiles@';
-const MAIN = REPO + 'main/';
-const MAPLIBRE = 'https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.1/dist/';
+const MAIN = new URL('./', import.meta.url).href; // same version as this loader
+// MapLibre 5.24.1, patched so it does not read the parent page address (blocked inside Canvas).
+const MAPLIBRE = MAIN;
 
 let ready = null;
 const VERSION = '2';
@@ -53,7 +54,8 @@ function branchFor(kind, z, x) {
 
 async function setup() {
   loadCss(MAPLIBRE + 'maplibre-gl.css');
-  if (!window.maplibregl) await loadScript(MAPLIBRE + 'maplibre-gl.js');
+  if (!window.maplibregl || !window.maplibregl.__adeo) await loadScript(MAPLIBRE + 'maplibre-gl.js');
+  window.maplibregl.__adeo = true;
   manifest = (await import(MAIN + 'manifest.js')).default;
   const empty = () => ({ data: new ArrayBuffer(0) });
 
