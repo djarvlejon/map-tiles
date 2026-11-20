@@ -14,6 +14,7 @@ const MAIN = REPO + 'main/';
 const MAPLIBRE = 'https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.1/dist/';
 
 let ready = null;
+const VERSION = '2';
 let manifest = null;
 
 function loadCss(href) {
@@ -93,9 +94,37 @@ async function setup() {
   });
 }
 
+function statusBox(container) {
+  const host = typeof container === 'string' ? document.getElementById(container) : container;
+  if (!host) return { set() {}, done() {} };
+  if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+  if (host.clientHeight < 50) host.style.minHeight = '400px';
+  const box = document.createElement('div');
+  box.style.cssText = 'position:absolute;left:8px;bottom:8px;z-index:9999;font:12px sans-serif;background:rgba(255,255,255,.9);color:#333;padding:4px 8px;border-radius:4px;pointer-events:none';
+  host.appendChild(box);
+  return {
+    set(t, err) { box.textContent = t; if (err) { box.style.color = '#b00020'; box.style.pointerEvents = 'auto'; } },
+    done() { box.remove(); },
+  };
+}
+
 export async function createMap(container, options = {}) {
-  if (!ready) ready = setup();
-  await ready;
+  const status = statusBox(container);
+  try {
+    status.set('Loading map engine...');
+    if (!ready) ready = setup();
+    await ready;
+    status.set('Loading map style...');
+    const map = await build(container, options, status);
+    status.done();
+    return map;
+  } catch (e) {
+    status.set('Map error: ' + (e && e.message ? e.message : e), true);
+    throw e;
+  }
+}
+
+async function build(container, options, status) {
   const style = (await import(MAIN + 'style.js')).default;
   const map = new window.maplibregl.Map({
     container,
@@ -107,7 +136,21 @@ export async function createMap(container, options = {}) {
     ...options.mapOptions,
   });
   map.addControl(new window.maplibregl.NavigationControl({ showCompass: false }), 'top-left');
-  await new Promise((resolve) => map.once('load', resolve));
+  map.on('error', (e) => status.set('Map error: ' + (e.error && e.error.message ? e.error.message : 'unknown'), true));
+  status.set('Drawing map...');
+  await new Promise((resolve, reject) => {
+    map.once('load', resolve);
+    setTimeout(() => reject(new Error('map did not finish loading within 30 s')), 30000);
+  });
+  // Code written as map.on('load', fn) after createMap() still runs: the event has already fired, so call fn now.
+  const on = map.on.bind(map);
+  map.on = (type, ...args) => {
+    if (type === 'load' && args.length === 1 && typeof args[0] === 'function') {
+      setTimeout(() => args[0]({ type: 'load', target: map }), 0);
+      return map;
+    }
+    return on(type, ...args);
+  };
   return map;
 }
 
