@@ -9,13 +9,13 @@
 //
 // Map data © OpenStreetMap contributors (ODbL), via Protomaps. Keep the attribution visible.
 
-const REPO = 'https://cdn.jsdelivr.net/gh/djarvlejon/map-tiles@';
+const GH = 'https://cdn.jsdelivr.net/gh/djarvlejon/';
 const MAIN = new URL('./', import.meta.url).href; // same version as this loader
 // MapLibre 5.24.1, patched so it does not read the parent page address (blocked inside Canvas).
 const MAPLIBRE = MAIN;
 
 let ready = null;
-const VERSION = '2';
+const VERSION = '3';
 let manifest = null;
 
 function loadCss(href) {
@@ -43,11 +43,13 @@ function b64(str) {
   return out.buffer;
 }
 
-function branchFor(kind, z, x) {
-  for (const country of Object.values(manifest)) {
-    const ranges = country[kind] && country[kind][z];
-    if (!ranges) continue;
-    for (const [x0, x1, branch] of ranges) if (x >= x0 && x <= x1) return branch;
+function refFor(kind, z, x) {
+  const ranges = manifest[kind] && manifest[kind][z];
+  if (!ranges) return null;
+  let lo = 0, hi = ranges.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1, [x0, x1, ref] = ranges[mid];
+    if (x < x0) hi = mid - 1; else if (x > x1) lo = mid + 1; else return ref;
   }
   return null;
 }
@@ -62,13 +64,13 @@ async function setup() {
   window.maplibregl.addProtocol('adeomap', async (params) => {
     const path = params.url.slice('adeomap://'.length);
 
-    let m = path.match(/^(base|city)\/(\d+)\/(\d+)\/(\d+)/);
+    let m = path.match(/^(base|detail)\/(\d+)\/(\d+)\/(\d+)/);
     if (m) {
       const [, kind, z, x, y] = m;
-      const branch = branchFor(kind, +z, +x);
-      if (!branch) return empty();
+      const ref = refFor(kind, +z, +x);
+      if (!ref) return empty();
       try {
-        const mod = await import(`${REPO}${branch}/${kind}/${z}/${x}/${y}.js`);
+        const mod = await import(`${GH}${ref}/t/${z}/${x}/${y}.js`);
         return { data: b64(mod.default) };
       } catch (e) {
         return empty();
@@ -159,3 +161,5 @@ async function build(container, options, status) {
 export function coverage() {
   return manifest;
 }
+
+export const version = VERSION;
